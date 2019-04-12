@@ -17,16 +17,18 @@ def f_menu():
         5 - Load Products
         6 - Load Orders
         7 - Load Dates
-        8 - Update Price
-        9 - Display
-        10 - Close Database Connection
+        8 - Create View for product order
+        9 - Create View for order
+        10 - Update Price
+        11 - Display
+        12 - Display View for product order
+        13 - Display View for order
+        14 - Close Database Connection
         X - Exit
         """)
     choice = input("choice:")
     # while choice.upper() != 'X':
     return choice
-
-
 
 def f_db_connect():
 
@@ -43,8 +45,6 @@ def f_db_connect():
         stat = False
 
     return db_conn, stat
-
-
 
 def f_pr_tb_create():
 
@@ -171,7 +171,6 @@ def f_load_products():
 
     return stat
 
-
 def f_load_orders():
 
     stat = True
@@ -250,7 +249,66 @@ def f_load_dates():
         stat = False
 
     return stat
-    
+
+def f_v_prod_ord():
+
+    stat = True
+    sql = ""
+
+    try:
+        sql = "DROP VIEW IF EXISTS v_prod_ord;"
+        g_db_conn.execute(sql)
+        sql = '''  CREATE VIEW IF NOT EXISTS v_prod_ord AS
+            SELECT
+            P.prod_nbr, P.prod_line, P.color, P.size, P.price,
+            CASE WHEN O.ord_nbr IS NULL THEN 0 ELSE O.ord_nbr END AS ord_nbr,
+            CASE WHEN O.ord_nbr IS NULL THEN 0 ELSE 1         END AS ord_cnt,
+            CASE WHEN O.ord_qty IS NULL THEN 0 ELSE O.ord_qty END AS ord_qty,
+            P.price * ifnull( O.ord_qty, 0) AS ord_amt
+            FROM products P LEFT OUTER JOIN orders O ON P.id = O.prod_id;
+            '''
+        g_db_conn.execute(sql)
+        print("View for product order created")
+
+    except Exception as e:
+        print("Error create the view for product order : " + str(e))  # Print error message
+        stat = False
+
+    return stat
+
+def f_v_ord():
+
+    stat = True
+    sql = ""
+
+    try:
+        sql = "DROP VIEW IF EXISTS v_ord;"
+        g_db_conn.execute(sql)
+        sql = '''CREATE VIEW IF NOT EXISTS v_ord AS
+            SELECT P.prod_nbr, P.price,
+                O.ord_qty,
+                P.price * ifnull(O.ord_qty, 0) AS ord_amt,
+                D.date, D.month,
+                CASE D.day WHEN '0' THEN 'SUNDAY' 
+                    WHEN '1' THEN 'MONDAY'
+                    WHEN '2' THEN 'TUESDAY'
+                    WHEN '3' THEN 'WEDNESDAY'
+                    WHEN '4' THEN 'THURSDAY'
+                    WHEN '5' THEN 'FRIDAY'
+                    WHEN '6' THEN 'SATURDAY'
+                    ELSE 'OTHER' END AS day_name
+            FROM products P
+                INNER JOIN orders O ON P.id       = O.prod_id
+                INNER JOIN dates  D ON O.ord_date = D.date;
+            '''
+        g_db_conn.execute(sql)
+        print("View for orders created")
+
+    except Exception as e:
+        print("Error create the view for orders: " + str(e))  # Print error message
+        stat = False
+
+    return stat
 
 def f_update_price():
 
@@ -305,6 +363,61 @@ def f_display():
 
     return stat
 
+def f_d_v_prod_ord():
+
+    stat = True
+    sql = ""
+    csr = g_db_conn.cursor()
+
+    hdr_fmt = "|{0:^14}|{1:^9}|{2:^9}|{3:^12}|{4:^14}|{5:^14}|{6:^14}|"  # Header format
+    dat_fmt = "|{0:<14}|{1:<9}|{2:<9}|{3:<12}|{4:<14}|{5:<14}|{6:<14}|"  # Data   format
+
+    # Display the report header
+    print(hdr_fmt.format('--------------', '---------', '---------', '------------', '--------------', '--------------', '--------------'))  # Header data
+    print(hdr_fmt.format('Product Number', 'Size', 'Color', 'Sales Price', 'Order Count', 'Order Quantity', 'Total Sales $'))  # Header data
+    print(hdr_fmt.format('--------------', '---------', '---------', '------------', '--------------', '--------------', '--------------'))  # Header data
+
+    try:
+        sql = """SELECT * FROM v_prod_ord
+            GROUP BY ord_nbr
+            ORDER BY sum(ord_amt) DESC;
+            """
+        csr.execute(sql)
+        for row in csr.fetchall():
+            print(dat_fmt.format(row[0], row[3], row[2], row[4], row[6], row[7], row[8]))
+    except Exception as e:
+        print("Error select all from v_prod_ord: " + str(e))  # Print error message
+        stat = False
+
+    return stat
+
+def f_d_v_ord():
+
+    stat = True
+    sql = ""
+    csr = g_db_conn.cursor()
+
+    hdr_fmt = "|{0:^14}|{1:^14}|"  # Header format
+    dat_fmt = "|{0:<14}|{1:<14}|"  # Data   format
+
+    # Display the report header
+    print(hdr_fmt.format('--------------', '--------------'))  # Header data
+    print(hdr_fmt.format('Date', 'Total Sales $'))  # Header data
+    print(hdr_fmt.format('--------------', '--------------'))  # Header data
+
+    try:
+        sql = """SELECT * FROM v_ord
+            GROUP BY date
+            ORDER BY date ASC;
+            """
+        csr.execute(sql)
+        for row in csr.fetchall():
+            print(dat_fmt.format(row[4], row[3]))
+    except Exception as e:
+        print("Error select all from v_ord: " + str(e))  # Print error message
+        stat = False
+
+    return stat
 
 def f_db_disconnect():
 
@@ -380,20 +493,44 @@ def main():
             status = f_load_dates()
             if not status : choice = "X"
 
-        # Update the Price
+        #Create View for product order
         elif choice == "8":
+            print("Create product order view")
+            status = f_v_prod_ord()
+            if not status : choice = "X"
+
+        #Create View for orders
+        elif choice == "9":
+            print("Create order view")
+            status = f_v_ord()
+            if not status : choice = "X"
+
+        # Update the Price
+        elif choice == "10":
             print("Price updated")
             status = f_update_price()
             if not status : choice = "X"
 
         # Display the Table
-        elif choice == "9":
+        elif choice == "11":
             print("Data display")
             status = f_display()
             if not status : choice = "X"
 
+        # Display View for product order
+        elif choice == "12":
+            print("Data display View for product order")
+            status = f_d_v_prod_ord()
+            if not status : choice = "X"
+
+        # Display tView for orders
+        elif choice == "13":
+            print("Data display View for orders")
+            status = f_d_v_ord()
+            if not status : choice = "X"
+
         # Close the database
-        elif choice == "10":
+        elif choice == "14":
             print("Disconnect to Database")
             status = f_db_disconnect()
             if not status : choice = "X"
